@@ -21,18 +21,27 @@ body {
 .topbar {
   padding: 12px 20px;
   border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
 }
 
-.topbar h1 {
+.title-group h1 {
   margin: 0;
   font-size: 1.2rem;
   color: var(--accent);
 }
 
-.topbar p {
+.title-group p {
   margin: 4px 0 0;
   color: var(--muted);
   font-size: 0.85rem;
+}
+
+.history-controls {
+  display: flex;
+  gap: 8px;
 }
 
 .layout {
@@ -92,6 +101,11 @@ button,
 button,
 .file-btn {
   cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 input[type="range"] {
@@ -161,6 +175,7 @@ input[type="range"] {
 .canvas-panel {
   overflow: auto;
   max-height: calc(100vh - 120px);
+  touch-action: none;
 }
 
 #displayCanvas {
@@ -178,5 +193,10 @@ input[type="range"] {
 @media (max-width: 960px) {
   .layout {
     grid-template-columns: 1fr;
+  }
+
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

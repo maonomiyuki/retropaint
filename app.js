@@ -2,7 +2,12 @@
   'use strict';
 
   const LOGICAL_WIDTH = 160;
-  const LOGICAL_HEIGHT = 120;
+  const LOGICAL_HEIGHT = 180;
+  const ASPECT_HEIGHTS = {
+    '16:9': 135,
+    '4:3': 180,
+    '1:1': 240,
+  };
 
   const BAYER_4 = [
     [0, 8, 2, 10],
@@ -95,15 +100,24 @@
     isDrawing: false,
     previousCell: null,
     activePreset: 'neon',
+    canvasAspect: '4:3',
     needsRender: true,
+    history: [],
+    future: [],
+    maxHistory: 80,
+    didMutate: false,
+    actionDepth: 0,
   };
 
   const ui = {
     displayCanvas: document.getElementById('displayCanvas'),
     palette: document.getElementById('palette'),
     presetSelect: document.getElementById('presetSelect'),
+    canvasAspectSelect: document.getElementById('canvasAspectSelect'),
     toolSelect: document.getElementById('toolSelect'),
     penSize: document.getElementById('penSize'),
+    undoBtn: document.getElementById('undoBtn'),
+    redoBtn: document.getElementById('redoBtn'),
     ditherEnabled: document.getElementById('ditherEnabled'),
     bleedEnabled: document.getElementById('bleedEnabled'),
     scanlineEnabled: document.getElementById('scanlineEnabled'),
@@ -130,6 +144,11 @@
   const offscreenCanvas = document.createElement('canvas');
   const offscreenCtx = offscreenCanvas.getContext('2d');
 
+  const isFormFocus = () => {
+    const active = document.activeElement;
+    return active && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName);
+  };
+
   function parseHexColor(hex) {
     const clean = hex.replace('#', '');
     return {
@@ -143,20 +162,58 @@
     return JSON.parse(JSON.stringify(settings));
   }
 
-  function applyPreset(presetId, keepPixels = true) {
+  function updateUndoRedoUI() {
+    ui.undoBtn.disabled = state.history.length === 0;
+    ui.redoBtn.disabled = state.future.length === 0;
+  }
+
+  function beginAction() {
+    if (state.actionDepth > 0) return;
+    state.actionDepth = 1;
+    state.didMutate = false;
+    state.history.push(state.pixels.slice());
+    state.future.length = 0;
+    if (state.history.length > state.maxHistory) state.history.shift();
+    updateUndoRedoUI();
+  }
+
+  function endAction() {
+    if (state.actionDepth === 0) return;
+    state.actionDepth = 0;
+    if (!state.didMutate) {
+      state.history.pop();
+    } else {
+      scheduleRender();
+    }
+    updateUndoRedoUI();
+  }
+
+  function undo() {
+    if (state.history.length === 0) return;
+    state.future.push(state.pixels.slice());
+    state.pixels = state.history.pop();
+    scheduleRender();
+    updateUndoRedoUI();
+  }
+
+  function redo() {
+    if (state.future.length === 0) return;
+    state.history.push(state.pixels.slice());
+    state.pixels = state.future.pop();
+    scheduleRender();
+    updateUndoRedoUI();
+  }
+
+  function applyPreset(presetId, clearPixels = false) {
     const preset = PRESETS[presetId];
     if (!preset) return;
-
     state.activePreset = presetId;
     state.paletteHex = [...preset.palette];
     state.paletteRgb = state.paletteHex.map(parseHexColor);
     state.settings = deepCloneSettings(preset.settings);
-
-    if (!keepPixels) {
-      state.pixels.fill(0);
-    }
-
-    state.selectedColor = Math.min(state.selectedColor, state.paletteHex.length - 1);
+    state.settings.scaleX = 6;
+    state.settings.scaleY = 4;
+    if (clearPixels) state.pixels.fill(0);
     syncUIFromState();
     resizeDisplayCanvas();
     renderPalette();
@@ -165,6 +222,8 @@
 
   function syncUIFromState() {
     const s = state.settings;
+    ui.presetSelect.value = state.activePreset;
+    ui.canvasAspectSelect.value = state.canvasAspect;
     ui.toolSelect.value = state.tool;
     ui.penSize.value = String(state.penSize);
     ui.ditherEnabled.checked = s.ditherEnabled;
@@ -181,7 +240,6 @@
     ui.bleedValue.textContent = Number(s.bleedStrength).toFixed(2);
     ui.scanlineValue.textContent = Number(s.scanlineStrength).toFixed(2);
     ui.jitterValue.textContent = Number(s.jitterStrength).toFixed(2);
-    ui.presetSelect.value = state.activePreset;
   }
 
   function resizeDisplayCanvas() {
@@ -214,13 +272,18 @@
     });
   }
 
-  function getPixelIndex(x, y) {
-    return y * state.width + x;
+  function scheduleRender() {
+    state.needsRender = true;
   }
+
+  const getPixelIndex = (x, y) => y * state.width + x;
 
   function setPixel(x, y, colorIndex) {
     if (x < 0 || y < 0 || x >= state.width || y >= state.height) return;
-    state.pixels[getPixelIndex(x, y)] = colorIndex;
+    const idx = getPixelIndex(x, y);
+    if (state.pixels[idx] === colorIndex) return;
+    state.pixels[idx] = colorIndex;
+    state.didMutate = true;
   }
 
   function paintBrush(cx, cy, colorIndex) {
@@ -239,7 +302,6 @@
     const sx = x0 < x1 ? 1 : -1;
     const sy = y0 < y1 ? 1 : -1;
     let err = dx - dy;
-
     while (true) {
       painter(x0, y0);
       if (x0 === x1 && y0 === y1) break;
@@ -257,16 +319,24 @@
 
   function floodFill(startX, startY, targetColor, replacementColor) {
     if (targetColor === replacementColor) return;
-
     const stack = [[startX, startY]];
     while (stack.length > 0) {
       const [x, y] = stack.pop();
       if (x < 0 || y < 0 || x >= state.width || y >= state.height) continue;
       const idx = getPixelIndex(x, y);
       if (state.pixels[idx] !== targetColor) continue;
-
       state.pixels[idx] = replacementColor;
+      state.didMutate = true;
       stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+    }
+  }
+
+  function clearPixels(colorIndex = 0) {
+    for (let i = 0; i < state.pixels.length; i += 1) {
+      if (state.pixels[i] !== colorIndex) {
+        state.pixels[i] = colorIndex;
+        state.didMutate = true;
+      }
     }
   }
 
@@ -282,9 +352,13 @@
     };
   }
 
-  function applyToolAt(cellX, cellY) {
+  function applyToolAt(x, y) {
     const color = state.tool === 'eraser' ? 0 : state.selectedColor;
-    paintBrush(cellX, cellY, color);
+    paintBrush(x, y, color);
+  }
+
+  function setBodyScrollLock(locked) {
+    document.body.style.overflow = locked ? 'hidden' : '';
   }
 
   function handlePointerDown(event) {
@@ -293,15 +367,17 @@
     const cell = screenToCell(event.clientX, event.clientY);
 
     if (state.tool === 'bucket') {
+      beginAction();
       const target = state.pixels[getPixelIndex(cell.x, cell.y)];
       const replacement = state.selectedColor;
       floodFill(cell.x, cell.y, target, replacement);
-      scheduleRender();
+      endAction();
       return;
     }
 
+    beginAction();
     state.isDrawing = true;
-    document.body.style.overflow = 'hidden';
+    setBodyScrollLock(true);
     state.previousCell = cell;
     applyToolAt(cell.x, cell.y);
     scheduleRender();
@@ -312,15 +388,15 @@
     if (!state.isDrawing) return;
     const cell = screenToCell(event.clientX, event.clientY);
     const prev = state.previousCell;
+    const color = state.tool === 'eraser' ? 0 : state.selectedColor;
 
     if (!prev) {
-      applyToolAt(cell.x, cell.y);
+      paintBrush(cell.x, cell.y, color);
       state.previousCell = cell;
       scheduleRender();
       return;
     }
 
-    const color = state.tool === 'eraser' ? 0 : state.selectedColor;
     rasterLine(prev.x, prev.y, cell.x, cell.y, (x, y) => paintBrush(x, y, color));
     state.previousCell = cell;
     scheduleRender();
@@ -331,9 +407,37 @@
     if (ui.displayCanvas.hasPointerCapture(event.pointerId)) {
       ui.displayCanvas.releasePointerCapture(event.pointerId);
     }
+    if (state.isDrawing) {
+      endAction();
+    }
     state.isDrawing = false;
     state.previousCell = null;
-    document.body.style.overflow = '';
+    setBodyScrollLock(false);
+  }
+
+  function resizeLogicalCanvas(newHeight) {
+    if (newHeight === state.height) return;
+    beginAction();
+    const newPixels = new Uint8Array(LOGICAL_WIDTH * newHeight);
+    const overlapW = Math.min(state.width, LOGICAL_WIDTH);
+    const overlapH = Math.min(state.height, newHeight);
+
+    for (let y = 0; y < overlapH; y += 1) {
+      for (let x = 0; x < overlapW; x += 1) {
+        const oldIdx = y * state.width + x;
+        const newIdx = y * LOGICAL_WIDTH + x;
+        const value = state.pixels[oldIdx];
+        newPixels[newIdx] = value;
+        if (value !== 0 && oldIdx !== newIdx) state.didMutate = true;
+      }
+    }
+
+    if (state.height !== newHeight) state.didMutate = true;
+    state.width = LOGICAL_WIDTH;
+    state.height = newHeight;
+    state.pixels = newPixels;
+    resizeDisplayCanvas();
+    endAction();
   }
 
   function buildColorMapWithConstraints() {
@@ -343,24 +447,21 @@
 
     for (let y = 0; y < state.height; y += 1) {
       const used = new Set();
-      const overflowIndexes = [];
+      const overflow = [];
 
       for (let x = 0; x < state.width; x += 1) {
         const idx = getPixelIndex(x, y);
         const color = out[idx];
         if (!used.has(color)) {
-          if (used.size < limit) {
-            used.add(color);
-          } else {
-            overflowIndexes.push(idx);
-          }
+          if (used.size < limit) used.add(color);
+          else overflow.push(idx);
         }
       }
 
-      if (overflowIndexes.length > 0) {
+      if (overflow.length > 0) {
         if (state.settings.autoClampColors) {
           const allowed = Array.from(used.values());
-          overflowIndexes.forEach((idx) => {
+          overflow.forEach((idx) => {
             const original = state.paletteRgb[out[idx]];
             let bestColor = allowed[0];
             let bestDist = Infinity;
@@ -445,12 +546,9 @@
   function buildJitterMap() {
     const map = new Int8Array(state.height);
     if (!state.settings.jitterEnabled || state.settings.jitterStrength <= 0) return map;
-
     const chance = state.settings.jitterStrength * 0.55;
     for (let y = 0; y < state.height; y += 1) {
-      if (Math.random() < chance) {
-        map[y] = Math.random() > 0.5 ? 1 : -1;
-      }
+      if (Math.random() < chance) map[y] = Math.random() > 0.5 ? 1 : -1;
     }
     return map;
   }
@@ -474,10 +572,6 @@
     }
 
     displayCtx.restore();
-  }
-
-  function scheduleRender() {
-    state.needsRender = true;
   }
 
   function frame() {
@@ -517,18 +611,14 @@
 
   function pixelsToBase64(uint8) {
     let binary = '';
-    for (let i = 0; i < uint8.length; i += 1) {
-      binary += String.fromCharCode(uint8[i]);
-    }
+    for (let i = 0; i < uint8.length; i += 1) binary += String.fromCharCode(uint8[i]);
     return btoa(binary);
   }
 
   function base64ToPixels(base64) {
     const binary = atob(base64);
     const out = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i += 1) {
-      out[i] = binary.charCodeAt(i);
-    }
+    for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i);
     return out;
   }
 
@@ -540,8 +630,8 @@
       settings: state.settings,
       pixels: pixelsToBase64(state.pixels),
       presetId: state.activePreset,
+      canvasAspect: state.canvasAspect,
     };
-
     const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -549,6 +639,12 @@
     link.download = `retro-paint-${Date.now()}.json`;
     link.click();
     URL.revokeObjectURL(url);
+  }
+
+  function aspectFromHeight(h) {
+    if (h === 135) return '16:9';
+    if (h === 240) return '1:1';
+    return '4:3';
   }
 
   function loadJSON(file) {
@@ -566,13 +662,19 @@
         state.paletteHex = payload.palette;
         state.paletteRgb = state.paletteHex.map(parseHexColor);
         state.settings = payload.settings;
+        state.settings.scaleX = 6;
+        state.settings.scaleY = 4;
         state.activePreset = payload.presetId || state.activePreset;
+        state.canvasAspect = payload.canvasAspect || aspectFromHeight(state.height);
         state.selectedColor = Math.min(state.selectedColor, state.paletteHex.length - 1);
 
         syncUIFromState();
         renderPalette();
         resizeDisplayCanvas();
         scheduleRender();
+        state.history = [];
+        state.future = [];
+        updateUndoRedoUI();
       } catch (error) {
         alert(`Load failed: ${error.message}`);
       }
@@ -588,10 +690,19 @@
       ui.presetSelect.appendChild(option);
     });
 
-    ui.presetSelect.addEventListener('change', () => applyPreset(ui.presetSelect.value, true));
+    ui.presetSelect.addEventListener('change', () => applyPreset(ui.presetSelect.value, false));
+
+    ui.canvasAspectSelect.addEventListener('change', () => {
+      const aspect = ui.canvasAspectSelect.value;
+      state.canvasAspect = aspect;
+      resizeLogicalCanvas(ASPECT_HEIGHTS[aspect]);
+      syncUIFromState();
+    });
+
     ui.toolSelect.addEventListener('change', () => {
       state.tool = ui.toolSelect.value;
     });
+
     ui.penSize.addEventListener('change', () => {
       state.penSize = Number(ui.penSize.value);
     });
@@ -639,10 +750,13 @@
     });
 
     ui.clearBtn.addEventListener('click', () => {
-      state.pixels.fill(0);
-      scheduleRender();
+      beginAction();
+      clearPixels(0);
+      endAction();
     });
 
+    ui.undoBtn.addEventListener('click', undo);
+    ui.redoBtn.addEventListener('click', redo);
     ui.exportBtn.addEventListener('click', () => exportPNG(ui.exportMode.value));
     ui.saveBtn.addEventListener('click', saveJSON);
     ui.loadInput.addEventListener('change', () => {
@@ -663,6 +777,22 @@
     ui.displayCanvas.addEventListener('touchend', (e) => e.preventDefault(), activeOpts);
 
     window.addEventListener('keydown', (event) => {
+      if (isFormFocus()) return;
+
+      const key = event.key.toLowerCase();
+      const cmdOrCtrl = event.metaKey || event.ctrlKey;
+      if (cmdOrCtrl && key === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) redo();
+        else undo();
+        return;
+      }
+      if (cmdOrCtrl && key === 'y') {
+        event.preventDefault();
+        redo();
+        return;
+      }
+
       if (event.key === '[' || event.key === ']') {
         const sizes = [1, 2, 4];
         const i = sizes.indexOf(state.penSize);
@@ -679,11 +809,15 @@
         }
       }
 
-      if (event.key.toLowerCase() === 'e') {
+      if (key === 'p') {
+        state.tool = 'pen';
+        ui.toolSelect.value = 'pen';
+      }
+      if (key === 'e') {
         state.tool = 'eraser';
         ui.toolSelect.value = 'eraser';
       }
-      if (event.key.toLowerCase() === 'g') {
+      if (key === 'g') {
         state.tool = 'bucket';
         ui.toolSelect.value = 'bucket';
       }
@@ -692,7 +826,11 @@
 
   function init() {
     bindUI();
-    applyPreset('neon', false);
+    applyPreset('neon', true);
+    state.canvasAspect = '4:3';
+    syncUIFromState();
+    resizeDisplayCanvas();
+    updateUndoRedoUI();
     frame();
   }
 

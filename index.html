@@ -8,8 +8,14 @@
   </head>
   <body>
     <header class="topbar">
-      <h1>Retro Paint 2600</h1>
-      <p>Indexed-color paint with Atari/8bit flavored post effects.</p>
+      <div class="title-group">
+        <h1>Retro Paint 2600</h1>
+        <p>Indexed-color paint with Atari/8bit flavored post effects.</p>
+      </div>
+      <div class="history-controls">
+        <button id="undoBtn" type="button" disabled>Undo ←</button>
+        <button id="redoBtn" type="button" disabled>Redo →</button>
+      </div>
     </header>
 
     <main class="layout">
@@ -17,6 +23,15 @@
         <div class="control-row">
           <label for="presetSelect">Preset</label>
           <select id="presetSelect"></select>
+        </div>
+
+        <div class="control-row">
+          <label for="canvasAspectSelect">Canvas Aspect</label>
+          <select id="canvasAspectSelect">
+            <option value="4:3">4:3 (CRT)</option>
+            <option value="16:9">16:9</option>
+            <option value="1:1">1:1</option>
+          </select>
         </div>
 
         <div class="control-row">
@@ -97,7 +112,7 @@
           <input id="loadInput" type="file" accept="application/json" />
         </div>
 
-        <p class="help">Shortcut: [ / ] pen size, 1..8 color, E eraser, G bucket</p>
+        <p class="help">Shortcut: [ / ] size, 1..8 color, P pen, E eraser, G bucket, Ctrl/⌘+Z Undo</p>
       </section>
 
       <section class="panel canvas-panel">
