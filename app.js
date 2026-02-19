@@ -283,13 +283,6 @@
   }
 
   function applyToolAt(cellX, cellY) {
-    if (state.tool === 'bucket') {
-      const target = state.pixels[getPixelIndex(cellX, cellY)];
-      const next = state.tool === 'eraser' ? 0 : state.selectedColor;
-      floodFill(cellX, cellY, target, next);
-      return;
-    }
-
     const color = state.tool === 'eraser' ? 0 : state.selectedColor;
     paintBrush(cellX, cellY, color);
   }
@@ -308,12 +301,14 @@
     }
 
     state.isDrawing = true;
+    document.body.style.overflow = 'hidden';
     state.previousCell = cell;
     applyToolAt(cell.x, cell.y);
     scheduleRender();
   }
 
   function handlePointerMove(event) {
+    if (state.isDrawing) event.preventDefault();
     if (!state.isDrawing) return;
     const cell = screenToCell(event.clientX, event.clientY);
     const prev = state.previousCell;
@@ -332,11 +327,13 @@
   }
 
   function handlePointerUp(event) {
+    event.preventDefault();
     if (ui.displayCanvas.hasPointerCapture(event.pointerId)) {
       ui.displayCanvas.releasePointerCapture(event.pointerId);
     }
     state.isDrawing = false;
     state.previousCell = null;
+    document.body.style.overflow = '';
   }
 
   function buildColorMapWithConstraints() {
@@ -654,11 +651,16 @@
       ui.loadInput.value = '';
     });
 
-    ui.displayCanvas.addEventListener('pointerdown', handlePointerDown);
-    ui.displayCanvas.addEventListener('pointermove', handlePointerMove);
-    ui.displayCanvas.addEventListener('pointerup', handlePointerUp);
-    ui.displayCanvas.addEventListener('pointerleave', handlePointerUp);
-    ui.displayCanvas.addEventListener('pointercancel', handlePointerUp);
+    const activeOpts = { passive: false };
+    ui.displayCanvas.addEventListener('pointerdown', handlePointerDown, activeOpts);
+    ui.displayCanvas.addEventListener('pointermove', handlePointerMove, activeOpts);
+    ui.displayCanvas.addEventListener('pointerup', handlePointerUp, activeOpts);
+    ui.displayCanvas.addEventListener('pointerleave', handlePointerUp, activeOpts);
+    ui.displayCanvas.addEventListener('pointercancel', handlePointerUp, activeOpts);
+
+    ui.displayCanvas.addEventListener('touchstart', (e) => e.preventDefault(), activeOpts);
+    ui.displayCanvas.addEventListener('touchmove', (e) => e.preventDefault(), activeOpts);
+    ui.displayCanvas.addEventListener('touchend', (e) => e.preventDefault(), activeOpts);
 
     window.addEventListener('keydown', (event) => {
       if (event.key === '[' || event.key === ']') {

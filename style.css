@@ -169,6 +169,10 @@ input[type="range"] {
   image-rendering: crisp-edges;
   background: #000;
   border: 1px solid #222;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 @media (max-width: 960px) {
