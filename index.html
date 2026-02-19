@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Retro Paint 2600</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="title-group">
+        <h1>Retro Paint 2600</h1>
+        <p>Indexed-color paint with Atari/8bit flavored post effects.</p>
+      </div>
+      <div class="history-controls">
+        <button id="undoBtn" type="button" disabled>Undo ←</button>
+        <button id="redoBtn" type="button" disabled>Redo →</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel controls">
+        <div class="control-row">
+          <label for="presetSelect">Preset</label>
+          <select id="presetSelect"></select>
+        </div>
+
+        <div class="control-row">
+          <label for="canvasAspectSelect">Canvas Aspect</label>
+          <select id="canvasAspectSelect">
+            <option value="4:3">4:3 (CRT)</option>
+            <option value="16:9">16:9</option>
+            <option value="1:1">1:1</option>
+          </select>
+        </div>
+
+        <div class="control-row">
+          <label for="toolSelect">Tool</label>
+          <select id="toolSelect">
+            <option value="pen">Pen</option>
+            <option value="bucket">Bucket</option>
+            <option value="eraser">Eraser</option>
+          </select>
+        </div>
+
+        <div class="control-row">
+          <label for="penSize">Pen Size</label>
+          <select id="penSize">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="4">4</option>
+          </select>
+        </div>
+
+        <div class="control-row wide">
+          <span>Palette</span>
+          <div id="palette" class="palette-grid" aria-label="color palette"></div>
+        </div>
+
+        <fieldset class="effects">
+          <legend>Effects</legend>
+
+          <div class="effect-item">
+            <label><input id="ditherEnabled" type="checkbox" checked /> Dither</label>
+            <input id="ditherStrength" type="range" min="0" max="1" step="0.01" />
+            <span id="ditherValue" class="value">0.00</span>
+          </div>
+
+          <div class="effect-item">
+            <label><input id="bleedEnabled" type="checkbox" checked /> Horizontal Bleed</label>
+            <input id="bleedStrength" type="range" min="0" max="1" step="0.01" />
+            <span id="bleedValue" class="value">0.00</span>
+          </div>
+
+          <div class="effect-item">
+            <label><input id="scanlineEnabled" type="checkbox" checked /> Scanline</label>
+            <input id="scanlineStrength" type="range" min="0" max="1" step="0.01" />
+            <span id="scanlineValue" class="value">0.00</span>
+          </div>
+
+          <div class="effect-item">
+            <label><input id="jitterEnabled" type="checkbox" checked /> Line Jitter</label>
+            <input id="jitterStrength" type="range" min="0" max="1" step="0.01" />
+            <span id="jitterValue" class="value">0.00</span>
+          </div>
+        </fieldset>
+
+        <fieldset class="constraints">
+          <legend>Retro Constraints</legend>
+          <div class="control-row">
+            <label for="lineColorLimit">Per-scanline colors</label>
+            <input id="lineColorLimit" type="number" min="2" max="6" step="1" />
+          </div>
+          <div class="control-row">
+            <label><input id="autoClamp" type="checkbox" /> Auto clamp colors</label>
+          </div>
+          <p id="lineWarning" class="warning"></p>
+        </fieldset>
+
+        <div class="buttons">
+          <button id="clearBtn" type="button">Clear</button>
+          <button id="exportBtn" type="button">Export PNG</button>
+          <select id="exportMode">
+            <option value="effect">Effect Render (A)</option>
+            <option value="raw">Raw Logical (B)</option>
+          </select>
+        </div>
+
+        <div class="buttons">
+          <button id="saveBtn" type="button">Save JSON</button>
+          <label class="file-btn" for="loadInput">Load JSON</label>
+          <input id="loadInput" type="file" accept="application/json" />
+        </div>
+
+        <p class="help">Shortcut: [ / ] size, 1..8 color, P pen, E eraser, G bucket, Ctrl/⌘+Z Undo</p>
+      </section>
+
+      <section class="panel canvas-panel">
+        <canvas id="displayCanvas" aria-label="paint canvas"></canvas>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
